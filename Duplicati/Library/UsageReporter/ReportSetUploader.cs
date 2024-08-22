@@ -26,6 +26,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Net;
+using System.Net.Http;
+using Duplicati.Library.Utility;
 
 namespace Duplicati.Library.UsageReporter
 {
@@ -70,23 +72,17 @@ namespace Duplicati.Library.UsageReporter
                         {
                             if (File.Exists(f))
                             {
-                                var req = (HttpWebRequest)WebRequest.Create(UPLOAD_URL);
-                                req.Method = "POST";
-                                req.ContentType = "application/json; charset=utf-8";
-
                                 int rc;
                                 using (var fs = File.OpenRead(f))
                                 {
                                     if (fs.Length > 0)
                                     {
-                                        req.ContentLength = fs.Length;
-                                        var areq = new Library.Utility.AsyncHttpRequest(req);
-
-                                        using (var rs = areq.GetRequestStream())
-                                            Library.Utility.Utility.CopyStream(fs, rs);
-
-                                        using (var resp = (HttpWebResponse)areq.GetResponse())
-                                            rc = (int)resp.StatusCode;
+                                        using var request = new HttpRequestMessage(HttpMethod.Post, UPLOAD_URL);
+                  
+                                        request.Content = new StreamContent(fs);
+                                
+                                        var response = await HttpClientHelper.DefaultClient.UploadStream(request);
+                                        rc = (int)response.StatusCode;
                                     }
                                     else
                                         rc = 200;
