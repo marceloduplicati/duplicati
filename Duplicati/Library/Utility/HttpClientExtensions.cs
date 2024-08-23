@@ -69,7 +69,7 @@ public static class HttpClientExtensions
     /// <param name="progressReportingAction">Action for progress reporting</param>
     /// <param name="cancellationToken">Cancelation token</param>
     /// <returns></returns>
-    public static async Task DownloadFile(this HttpClient client, HttpRequestMessage request, FileStream fileStream, Action<long> progressReportingAction = null, CancellationToken cancellationToken = default)
+    public static async Task DownloadFile(this HttpClient client, HttpRequestMessage request, Stream fileStream, Action<long> progressReportingAction = null, CancellationToken cancellationToken = default)
     {
 
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);

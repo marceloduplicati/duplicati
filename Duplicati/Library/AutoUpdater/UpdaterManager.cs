@@ -28,6 +28,7 @@ using Duplicati.Library.Common;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Net.Http;
+using System.Threading;
 
 namespace Duplicati.Library.AutoUpdater
 {
@@ -323,8 +324,10 @@ namespace Duplicati.Library.AutoUpdater
                         request.Headers.Add(System.Net.HttpRequestHeader.UserAgent.ToString(), string.Format("{0} v{1}{2}", APPNAME, SelfVersion.Version, string.IsNullOrWhiteSpace(InstallID) ? "" : " -" + InstallID));
                         request.Headers.Add("X-Install-ID", InstallID);
 
-                        HttpClientHelper.DefaultClient.DownloadFile(request, tmpfile).ConfigureAwait(false).GetAwaiter().GetResult();
+                        using var timeoutToken = new CancellationTokenSource();
+                        timeoutToken.CancelAfter(HttpContextSettings.ReadWriteTimeout);
 
+                        HttpClientHelper.DefaultClient.DownloadFile(request, tmpfile, null, timeoutToken.Token).ConfigureAwait(false).GetAwaiter().GetResult();
 
                         using (var fs = System.IO.File.OpenRead(tmpfile))
                         {
@@ -449,7 +452,10 @@ namespace Duplicati.Library.AutoUpdater
                             request.Headers.Add(System.Net.HttpRequestHeader.UserAgent.ToString(), string.Format("{0} v{1}", APPNAME, SelfVersion.Version));
                             request.Headers.Add("X-Install-ID", InstallID);
 
-                            HttpClientHelper.DefaultClient.DownloadFile(request, tempfile, cb).ConfigureAwait(false).GetAwaiter().GetResult();
+                            using var timeoutToken = new CancellationTokenSource();
+                            timeoutToken.CancelAfter(HttpContextSettings.ReadWriteTimeout);
+
+                            HttpClientHelper.DefaultClient.DownloadFile(request, tempfile, cb, timeoutToken.Token).ConfigureAwait(false).GetAwaiter().GetResult();
 
                             var sha256 = System.Security.Cryptography.SHA256.Create();
                             var md5 = System.Security.Cryptography.MD5.Create();

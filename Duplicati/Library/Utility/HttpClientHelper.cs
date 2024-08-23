@@ -36,6 +36,12 @@ public static class HttpClientHelper
     /// per the HttpClientFactory recommended pattern.
     /// </summary>
     public static HttpClient DefaultClient { get; private set; }
+
+    /// <summary>
+    /// Reference to the HttpClientFactory instance so we can create specific clients
+    /// when the singleton pattnern is not desirable.
+    /// </summary>
+    private static IHttpClientFactory _factory {get;set;}
     
     /// <summary>
     /// Sets the factory reference.
@@ -43,6 +49,27 @@ public static class HttpClientHelper
     /// <param name="factory">IHttpClientFactory instance</param>
     public static void Configure(IHttpClientFactory factory)
     {
+        _factory = factory;
         DefaultClient = factory.CreateClient();
+    }
+
+    /// <summary>
+    /// Creates a new HttpClient instance, to be used in places where the singleton
+    /// pattern is not desirable.
+    /// </summary>
+    /// <returns></returns>
+    public static HttpClient CreateClient()
+    {
+        return _factory.CreateClient();
+    }
+
+    /// <summary>
+    /// Creates a new HttpClient instance with a specific handler, wherever its needed.
+    /// </summary>
+    /// <param name="handler">HttpClientHandler configured with authentication parameters</param>
+    /// <returns></returns>
+    public static HttpClient CreateClient(HttpClientHandler handler)
+    {
+        return new HttpClient(handler);
     }
 }

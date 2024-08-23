@@ -28,6 +28,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using Duplicati.Library.Utility;
+using System.Threading;
 
 namespace Duplicati.Library.UsageReporter
 {
@@ -80,8 +81,11 @@ namespace Duplicati.Library.UsageReporter
                                         using var request = new HttpRequestMessage(HttpMethod.Post, UPLOAD_URL);
                   
                                         request.Content = new StreamContent(fs);
+
+                                        using var timeoutToken = new CancellationTokenSource();
+                                        timeoutToken.CancelAfter(HttpContextSettings.ReadWriteTimeout);
                                 
-                                        var response = await HttpClientHelper.DefaultClient.UploadStream(request);
+                                        var response = await HttpClientHelper.DefaultClient.UploadStream(request, timeoutToken.Token);
                                         rc = (int)response.StatusCode;
                                     }
                                     else
