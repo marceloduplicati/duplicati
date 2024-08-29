@@ -22,11 +22,13 @@
 using Duplicati.Library.Common.IO;
 using Duplicati.Library.Interface;
 using Duplicati.Library.Utility;
+using Org.BouncyCastle.Utilities;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -159,12 +161,12 @@ namespace Duplicati.Library.Backend
             using var timeoutToken = new CancellationTokenSource();
             timeoutToken.CancelAfter(TimeSpan.FromSeconds(SHORT_OPERATION_TIMEOUT_SECONDS));
 
-            using var newRequest = CreateRequest(string.Empty, new HttpMethod("PROPFIND"));
-            newRequest.Headers.Add("Depth", "1");
-            newRequest.Content = new StreamContent(new MemoryStream(PROPFIND_BODY));
-            newRequest.Content.Headers.ContentLength = PROPFIND_BODY.Length;
+            var requestResources = CreateRequest(string.Empty, new HttpMethod("PROPFIND"));
+            requestResources.Item1.Headers.Add("Depth", "1");
+            requestResources.Item1.Content = new StreamContent(new MemoryStream(PROPFIND_BODY));
+            requestResources.Item1.Content.Headers.ContentLength = PROPFIND_BODY.Length;
 
-            using var response = _httpClient.SendAsync(newRequest, HttpCompletionOption.ResponseContentRead, timeoutToken.Token).ConfigureAwait(false).GetAwaiter().GetResult();
+            using var response = requestResources.Item2.SendAsync(requestResources.Item1, HttpCompletionOption.ResponseContentRead, timeoutToken.Token).ConfigureAwait(false).GetAwaiter().GetResult();
 
             response.EnsureSuccessStatusCode(); // This replaces the if needed when Mono was used.
            
@@ -265,12 +267,15 @@ namespace Duplicati.Library.Backend
                 using var timeoutToken = new CancellationTokenSource();
                 timeoutToken.CancelAfter(TimeSpan.FromSeconds(SHORT_OPERATION_TIMEOUT_SECONDS));
 
-                using var newRequest = CreateRequest(remotename);
-                newRequest.Method = HttpMethod.Delete;
+                var requestResources = CreateRequest(remotename);
+                requestResources.Item1.Method = HttpMethod.Delete;
 
-                var response = _httpClient.SendAsync(newRequest, timeoutToken.Token).ConfigureAwait(false).GetAwaiter().GetResult();
+                var response = requestResources.Item2.SendAsync(requestResources.Item1, timeoutToken.Token).ConfigureAwait(false).GetAwaiter().GetResult();
 
                 response.EnsureSuccessStatusCode(); // This replaces the if needed when Mono was used.
+
+                requestResources.Item1.Dispose();
+                requestResources.Item2.Dispose();
 
             }
             catch (HttpRequestException wex)
@@ -318,11 +323,14 @@ namespace Duplicati.Library.Backend
             using var timeoutToken = new CancellationTokenSource();
             timeoutToken.CancelAfter(TimeSpan.FromSeconds(SHORT_OPERATION_TIMEOUT_SECONDS));
 
-            using var newRequest = CreateRequest(string.Empty, new HttpMethod("MKCOL"));
+            var requestResources = CreateRequest(string.Empty, new HttpMethod("MKCOL"));
 
-            using var response = _httpClient.SendAsync(newRequest, timeoutToken.Token).ConfigureAwait(false).GetAwaiter().GetResult();
+            using var response = requestResources.Item2.SendAsync(requestResources.Item1, timeoutToken.Token).ConfigureAwait(false).GetAwaiter().GetResult();
 
             response.EnsureSuccessStatusCode(); // This replaces the if needed when Mono was used.
+
+            requestResources.Item1.Dispose();
+            requestResources.Item2.Dispose();
         }
 
         #endregion
@@ -340,33 +348,35 @@ namespace Duplicati.Library.Backend
 
         #endregion
 
-        private HttpRequestMessage CreateRequest(string remotename, HttpMethod method = null)
+        private Tuple< HttpRequestMessage, HttpClient> CreateRequest(string remotename, HttpMethod method = null)
         {
-            Console.WriteLine("CreateRequest {0}", _httpClient?.GetHashCode());
-            if (_httpClient == null)
-            {
-                var httpClientHandler = new HttpClientHandler();
+         
+           
+                // var httpClientHandler = new HttpClientHandler();
 
-                if (m_useIntegratedAuthentication)
-                {
-                    httpClientHandler.UseDefaultCredentials = true;
-                }
-                else if (m_forceDigestAuthentication)
-                {
-                    httpClientHandler.Credentials = new CredentialCache
-                    {
-                        { new System.Uri(remotename), "Digest", m_userInfo }
-                    };
-                }
-                else
-                {
-                    httpClientHandler.Credentials = m_userInfo;
-                    httpClientHandler.PreAuthenticate = true;// Equivalent to req.PreAuthenticate = true
-                }
+                // if (m_useIntegratedAuthentication)
+                // {
+                //     httpClientHandler.UseDefaultCredentials = true;
+                // }
+                // else if (m_forceDigestAuthentication)
+                // {
+                //     httpClientHandler.Credentials = new CredentialCache
+                //     {
+                //         { new System.Uri(remotename), "Digest", m_userInfo }
+                //     };
+                // }
+                // else
+                // {
+                //     httpClientHandler.Credentials = m_userInfo;
+                //     httpClientHandler.PreAuthenticate = true;// Equivalent to req.PreAuthenticate = true
+                // }
+      
+            var httpClient = HttpClientHelper.CreateClient();
 
-                _httpClient = HttpClientHelper.CreateClient(httpClientHandler);
-            }
+            httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(m_userInfo.UserName + ":" + m_userInfo.Password)));
 
+            httpClient.Timeout = Timeout.InfiniteTimeSpan;
+    
             var request = new HttpRequestMessage(HttpMethod.Get, $"{m_url}{Utility.Uri.UrlEncode(remotename).Replace("+", "%20")}");
             request.Headers.Add(HttpRequestHeader.UserAgent.ToString(), "Duplicati WEBDAV Client v" + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
             request.Headers.ConnectionClose = true; // Equivalent to KeepAlive = false
@@ -374,7 +384,7 @@ namespace Duplicati.Library.Backend
             if (method != null)
                 request.Method = method;
 
-            return request;
+            return new Tuple<HttpRequestMessage, HttpClient>( request, httpClient);
 
         }
 
@@ -382,6 +392,10 @@ namespace Duplicati.Library.Backend
 
         public async Task PutAsync(string remotename, Stream stream, CancellationToken cancelToken)
         {
+
+            var requestID = $"{remotename}  stream = {stream.GetHashCode()}";
+            
+            Console.WriteLine($"Trying {DateTime.Now.ToString("HH:mm:ss.fff")} - {requestID}");
             try
             {
 
@@ -391,23 +405,26 @@ namespace Duplicati.Library.Backend
                 timeoutToken.CancelAfter(TimeSpan.FromSeconds(LONG_OPERATION_TIMEOUT_SECONDS));
                 using var combinedTokens = CancellationTokenSource.CreateLinkedTokenSource(timeoutToken.Token, cancelToken);
 
-                using var newRequest = CreateRequest(remotename,HttpMethod.Put);
+                var requestResources = CreateRequest(remotename,HttpMethod.Put);
 
-                // This intermediate copy is provisional for debuging purposes
-                MemoryStream ms = new MemoryStream();
-                Utility.Utility.CopyStream(stream, ms);
-                ms.Position=0;
-                newRequest.Content = new StreamContent(ms);
-                newRequest.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-                newRequest.Headers.ConnectionClose = true; // Equivalent to KeepAlive = false
-                
-                using var response = await _httpClient.SendAsync(newRequest,HttpCompletionOption.ResponseContentRead, CancellationToken.None);
+                requestResources.Item1.Content =  new StreamContent(stream);
+               
+                requestResources.Item1.Content.Headers.ContentLength = stream.Length;
+                requestResources.Item1.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+
+                requestResources.Item1.Version = HttpVersion.Version11;
+
+                using var response = await requestResources.Item2.SendAsync(requestResources.Item1,HttpCompletionOption.ResponseHeadersRead, combinedTokens.Token);
 
                 response.EnsureSuccessStatusCode(); // This replaces the if needed when Mono was used.
+
+                requestResources.Item1.Dispose();
+                requestResources.Item2.Dispose();
 
             }
             catch (HttpRequestException wex)
             {
+                 Console.WriteLine($"Exception: {DateTime.Now.ToString("HH:mm:ss.fff")} - {requestID}");
                 if (wex.StatusCode == HttpStatusCode.Conflict || wex.StatusCode == HttpStatusCode.NotFound)
                     throw new FolderMissingException(Strings.WEBDAV.MissingFolderError(m_path, wex.Message), wex);
 
@@ -422,9 +439,12 @@ namespace Duplicati.Library.Backend
                 using var timeoutToken = new CancellationTokenSource();
                 timeoutToken.CancelAfter(TimeSpan.FromSeconds(LONG_OPERATION_TIMEOUT_SECONDS));
 
-                using var newRequest = CreateRequest(remotename, HttpMethod.Get);
+                var requestResources = CreateRequest(remotename, HttpMethod.Get);
                 
-                _httpClient.DownloadFile(newRequest, stream, null, timeoutToken.Token).ConfigureAwait(false).GetAwaiter().GetResult();
+                requestResources.Item2.DownloadFile(requestResources.Item1, stream, null, timeoutToken.Token).ConfigureAwait(false).GetAwaiter().GetResult();
+
+                requestResources.Item1.Dispose();
+                requestResources.Item2.Dispose();
             }
             catch (HttpRequestException wex)
             {
