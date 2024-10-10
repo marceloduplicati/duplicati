@@ -42,8 +42,12 @@ namespace Duplicati.Library.Common.IO
         {
             // TODO: These interfaces cannot be properly guarded by the supported platform attribute in this form.
             // They are used in static methods of USNJournal on all platforms.
+#pragma warning disable CA1416
             IO_WIN = new SystemIOWindows();
+#pragma warning restore CA1416
+#pragma warning disable CA1416
             IO_SYS = new SystemIOLinux();
+#pragma warning restore CA1416
             if (OperatingSystem.IsWindows())
             {
                 IO_OS = IO_WIN;
