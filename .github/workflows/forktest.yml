@@ -1,0 +1,37 @@
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  unit_tests:
+    name: Unit tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Restore NuGet dependencies
+        run: dotnet restore Duplicati.sln
+
+      - name: Build Duplicati
+        run: dotnet build --no-restore Duplicati.sln
+
+      - name: Run unit tests
+        run: dotnet test --no-build --verbosity minimal Duplicati.sln
+
+  selenium:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Selenium
+        run: pipeline/selenium/test.sh
