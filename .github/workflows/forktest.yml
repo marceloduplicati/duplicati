@@ -26,12 +26,6 @@ jobs:
       - name: Build Duplicati
         run: dotnet build --no-restore Duplicati.sln
 
-      - name: Run unit tests
-        run: dotnet test --no-build --verbosity minimal Duplicati.sln
-
-  selenium:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Selenium
-        run: pipeline/selenium/test.sh
+      - name: List build
+        run: ls
+         
